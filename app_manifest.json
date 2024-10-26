@@ -1,0 +1,30 @@
+{
+    "display_information": {
+        "name": "Channel Chameleon",
+        "description": "A WIP bot that hosts a game around restricting what messages you can send.",
+        "background_color": "#035920",
+        "long_description": "A bot that hosts a game around restricting what messages you can send in a particular channel. The game rules are still a work in progress; the project is mostly so I can learn how to write a Slack bot.\r\n\r\n\"Chameleon\" comes from the idea that the bot always adapts based on the messages sent to the channel. It's not a great name, but I couldn't think of anything better."
+    },
+    "features": {
+        "bot_user": {
+            "display_name": "Channel Chameleon",
+            "always_online": false
+        }
+    },
+    "oauth_config": {
+        "scopes": {
+            "user": [
+                "search:read"
+            ],
+            "bot": [
+                "canvases:write",
+                "chat:write"
+            ]
+        }
+    },
+    "settings": {
+        "org_deploy_enabled": false,
+        "socket_mode_enabled": false,
+        "token_rotation_enabled": false
+    }
+}
