@@ -1,15 +1,22 @@
 {
     "display_information": {
-        "name": "Channel Chameleon",
+        "name": "Chameleon",
         "description": "A WIP bot that hosts a game around restricting what messages you can send.",
         "background_color": "#035920",
-        "long_description": "A bot that hosts a game around restricting what messages you can send in a particular channel. The game rules are still a work in progress; the project is mostly so I can learn how to write a Slack bot.\r\n\r\n\"Chameleon\" comes from the idea that the bot always adapts based on the messages sent to the channel. It's not a great name, but I couldn't think of anything better."
+        "long_description": "I'm not sure what I'm doing with this project yet, but here's the concept:\r\n\r\nThis is a Slack bot that hosts a game around restricting what messages you can send in a particular channel.  \r\nThe game rules are still a work in progress; I'm mostly making it so I can learn how bolt works. I want to find an interesting twist to create an incentive to send messages, but this is mostly a proof of concept for now.  \r\n\r\n\"Chameleon\" comes from the idea that the bot always adapts based on the messages sent to the channel. It's not a very good name, but I couldn't think of anything better."
     },
     "features": {
         "bot_user": {
-            "display_name": "Channel Chameleon",
+            "display_name": "Chameleon",
             "always_online": false
-        }
+        },
+        "slash_commands": [
+            {
+                "command": "/chameleon-rules",
+                "description": "List the active rules.",
+                "should_escape": false
+            }
+        ]
     },
     "oauth_config": {
         "scopes": {
@@ -17,14 +24,17 @@
                 "search:read"
             ],
             "bot": [
-                "canvases:write",
-                "chat:write"
+                "chat:write",
+                "commands"
             ]
         }
     },
     "settings": {
+        "interactivity": {
+            "is_enabled": true
+        },
         "org_deploy_enabled": false,
-        "socket_mode_enabled": false,
+        "socket_mode_enabled": true,
         "token_rotation_enabled": false
     }
 }

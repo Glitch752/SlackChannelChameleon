@@ -1,10 +1,16 @@
-import { App, SayFn } from '@slack/bolt';
+import { App, LogLevel } from '@slack/bolt';
 import topThousandWords from "./topThousandEnglishWords.json";
+import dotenv from 'dotenv';
+dotenv.config();
 
 const app = new App({
-  signingSecret: process.env.SLACK_SIGNING_SECRET,
   token: process.env.SLACK_BOT_TOKEN,
-  clientId: process.env.SLACK_CLIENT_ID,
+  logLevel: LogLevel.DEBUG,
+  // signingSecret: process.env.SLACK_SIGNING_SECRET,
+  // clientId: process.env.SLACK_CLIENT_ID,
+  // clientSecret: process.env.SLACK_CLIENT_SECRET,
+  socketMode: true,
+  appToken: process.env.SLACK_APP_TOKEN,
 });
 
 type Rule = {
@@ -65,13 +71,19 @@ function getRulesMessage(): string {
   return message;
 }
 
-app.command('/chameleon-rules', async ({ command, ack, say }) => {
+app.command('/chameleon-rules', async ({ command, ack, respond }) => {
+  console.log('\x1b[33m', `Rules command recieved from ${command.user_name}!`, '\x1b[0m');
+
   await ack();
-  await say(getRulesMessage());
+
+  await respond({
+    response_type: "in_channel",
+    text: getRulesMessage()
+  });
 });
 
 (async () => {
-    await app.start(process.env.PORT || 3000);
+    await app.start();
 
-    console.log("Started app");
+    console.log('\x1b[32m', 'App is running!', '\x1b[0m');
 })();
