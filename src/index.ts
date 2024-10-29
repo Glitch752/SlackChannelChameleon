@@ -120,10 +120,177 @@ conflicts.forEach(([rule1ID, rule2ID]) => {
   rule2.conflictsWith.push(rule1ID);
 });
 
-const activeRules = new Set<string>();
-// TEMPORARY: we hard-code the rule to be active
-activeRules.add("every-letter");
-activeRules.add("no-spaces");
+let violationHistoryForThisRuleset: { violations: Rule[] }[] = [];
+let lastRulesetChange = Date.now();
+function getFailRatio(): number {
+  const messagesViolatingRules = violationHistoryForThisRuleset.filter(ruleset => ruleset.violations.length > 0).length;
+  return messagesViolatingRules / violationHistoryForThisRuleset.length;
+}
+
+const minimumTimeBetweenChanges = 1000 * 60 * 5; // 5 minutes
+const maximumTimeBetweenChanges = 1000 * 60 * 60 * 24; // 24 hours
+const minFailRatio = 0.1; // If less than this ratio of messages violate the rules, we increase the difficulty
+const maxFailRatio = 0.5; // If more than this ratio of messages violate the rules, we decrease the difficulty
+const minimumSampleSize = 10; // We need at least this many messages to make a decision
+const maximumMessagesUntilChange = 100; // We will change the ruleset after this many messages, regardless of the fail ratio
+const changeChance = 0.1; // The chance of changing the ruleset after the maximum number of messages has been reached
+const initialRoughDifficulty = 6; // The initial rough difficulty of the ruleset
+const mutationIterations = 5; // The number of times we randomly mutate the current ruleset before evaluating the change
+const mutationAmount = 2; // The number of rules we randomly change in the ruleset when mutating
+
+function isValidRuleset(ruleset: Set<string>): boolean {
+  const conflicts = rules.filter(rule => ruleset.has(rule.id)).flatMap(rule => rule.conflictsWith ?? []);
+  return !conflicts.some(conflict => ruleset.has(conflict));
+}
+
+/// Randomly varies a ruleset into another valid ruleset
+function mutateRuleset(currentRuleset: Set<string>, amount: number): Set<string> {
+  let newRuleset = new Set(currentRuleset);
+  for(let i = 0; i < amount; i++) {
+    let oldRuleset = new Set(newRuleset);
+    do {
+      newRuleset = new Set(oldRuleset);
+      const ruleToChange = rules[Math.floor(Math.random() * rules.length)];
+      if(newRuleset.has(ruleToChange.id)) {
+        newRuleset.delete(ruleToChange.id);
+      } else {
+        newRuleset.add(ruleToChange.id);
+      }
+    } while(!isValidRuleset(newRuleset));
+  }
+  return newRuleset;
+}
+
+// Makes the ruleset easier by mutating and picking the closest ruleset with a lower difficulty
+function makeEasierRuleset(currentRuleset: Set<string>): {
+  success: boolean,
+  ruleset: Set<string>
+} {
+  const mutatedRulesets = Array.from({ length: mutationIterations }, () => mutateRuleset(currentRuleset, mutationAmount));
+  // Pick the ruleset with the closest difficulty lower than the current one, and return the current ruleset if none are found
+  const closestRuleset = mutatedRulesets
+    .filter(ruleset => calculateDifficulty(ruleset) < calculateDifficulty(currentRuleset))
+    .sort((a, b) => calculateDifficulty(currentRuleset) - calculateDifficulty(a))
+    .pop();
+  if(!closestRuleset) return { success: false, ruleset: currentRuleset };
+  return { success: true, ruleset: closestRuleset };
+}
+
+// Makes the ruleset harder by mutating and picking the closest ruleset with a higher difficulty
+function makeHarderRuleset(currentRuleset: Set<string>): {
+  success: boolean,
+  ruleset: Set<string>
+} {
+  const mutatedRulesets = Array.from({ length: mutationIterations }, () => mutateRuleset(currentRuleset, mutationAmount));
+  // Pick the ruleset with the closest difficulty higher than the current one, and return the current ruleset if none are found
+  const closestRuleset = mutatedRulesets
+    .filter(ruleset => calculateDifficulty(ruleset) > calculateDifficulty(currentRuleset))
+    .sort((a, b) => calculateDifficulty(a) - calculateDifficulty(currentRuleset))
+    .pop();
+  if(!closestRuleset) return { success: false, ruleset: currentRuleset };
+  return { success: true, ruleset: closestRuleset };
+}
+
+// Gets all the rules that can be added to the current ruleset without violating any conflicts
+function getAdditionalValidRules(currentRuleset: Set<string>): Set<string> {
+  const validRules = new Set(
+    rules
+      .filter(rule => !currentRuleset.has(rule.id) && isValidRuleset(new Set([...currentRuleset, rule.id])))
+      .map(rule => rule.id)
+  );
+  console.log('\x1b[33m', `Valid rules: ${Array.from(validRules).join(", ")}`, '\x1b[0m');
+  return validRules;
+}
+
+// Calculates the difficulty of a ruleset
+function calculateDifficulty(ruleset: Set<string>): number {
+  return Array.from(ruleset).map(id => rules.find(rule => rule.id === id)!.difficulty).reduce((acc, val) => (acc ?? 0) + val, 0);
+}
+
+// Generates a random valid ruleset with a rough difficulty
+function randomValidRuleset(roughDifficulty: number, attempt = 0): Set<string> {
+  let ruleset = new Set<string>();
+  while(calculateDifficulty(ruleset) < roughDifficulty) {
+    const validRules = getAdditionalValidRules(ruleset);
+    if(validRules.size === 0) break;
+    const ruleToAdd = Array.from(validRules)[Math.floor(Math.random() * validRules.size)];
+    ruleset.add(ruleToAdd);
+  }
+  if(ruleset.size === 0 && attempt < 10) {
+    console.error("Couldn't generate a valid ruleset for some reason. Trying again.");
+    return randomValidRuleset(roughDifficulty, attempt + 1);
+  }
+  return ruleset;
+}
+
+function updateRules(newRuleset: Set<string>, reason: string) {
+  newRuleset = new Set(newRuleset); // If newRuleset is activeRules, it would be a reference to the same object, which would cause issues
+  activeRules.clear();
+  newRuleset.forEach(rule => activeRules.add(rule));
+  violationHistoryForThisRuleset = [];
+  lastRulesetChange = Date.now();
+
+  console.log('\x1b[33m', `Ruleset updated: ${reason}`, '\x1b[0m');
+  console.log('\x1b[33m', `New ruleset: ${Array.from(activeRules).join(", ")}`, '\x1b[0m');
+
+  if(!process.env.CHANNEL_ID) {
+    console.error("CHANNEL_ID not set in environment variables.");
+    return;
+  }
+
+  const message = `${reason}\n\n${getRulesMessage()}`;
+  app.client.chat.postMessage({
+    channel: process.env.CHANNEL_ID,
+    text: message
+  });
+}
+
+// Determines if the ruleset should be changed
+function evaluateChange() {
+  const timeSinceLastChange = Date.now() - lastRulesetChange;
+  if(timeSinceLastChange < minimumTimeBetweenChanges) return; // We need to wait longer before making a decision
+  if(timeSinceLastChange > maximumTimeBetweenChanges) {
+    const newRuleset = randomValidRuleset((initialRoughDifficulty + calculateDifficulty(activeRules)) / 2);
+    updateRules(newRuleset, "The ruleset has been changed entirely, since it has been a long time since it was last changed.");
+  }
+
+  if(violationHistoryForThisRuleset.length < minimumSampleSize) return; // We need more data to make a decision
+  if(violationHistoryForThisRuleset.length > maximumMessagesUntilChange) {
+    const newRuleset = randomValidRuleset((initialRoughDifficulty + calculateDifficulty(activeRules)) / 2);
+    updateRules(newRuleset, "The ruleset has been changed entirely, since there have been a lot of messages since it was last changed.");
+  }
+  if(violationHistoryForThisRuleset.length > minimumSampleSize) { // Change the ruleset entirely
+    if(Math.random() < changeChance) {
+      const newRuleset = randomValidRuleset((initialRoughDifficulty + calculateDifficulty(activeRules)) / 2);
+      updateRules(newRuleset, "The ruleset has been changed entirely by chance.");
+    }
+    return;
+  }
+
+  const failRatio = getFailRatio();
+  if(failRatio > maxFailRatio) {
+    const newRuleset = makeEasierRuleset(activeRules);
+    if(!newRuleset.success) {
+      const newRuleset = randomValidRuleset((initialRoughDifficulty + calculateDifficulty(activeRules)) / 2);
+      updateRules(newRuleset, "The fail ratio is high, but the ruleset couldn't be made easier, so we're changing it entirely.");
+    }
+    
+    updateRules(newRuleset.ruleset, "The ruleset has been made easier since the fail ratio is high.");
+  } else if(failRatio < minFailRatio) {
+    const newRuleset = makeHarderRuleset(activeRules);
+    if(!newRuleset.success) {
+      const newRuleset = randomValidRuleset((initialRoughDifficulty + calculateDifficulty(activeRules)) / 2);
+      updateRules(newRuleset, "The fail ratio is low, but the ruleset couldn't be made harder, so we're changing it entirely.");
+    }
+
+    updateRules(newRuleset.ruleset, "The ruleset has been made harder since the fail ratio is low.");
+  }
+
+  // No change needed
+}
+
+const activeRules: Set<string> = randomValidRuleset(initialRoughDifficulty);
+updateRules(activeRules, "An initial ruleset has been created.");
 
 function getRulesMessage(): string {
   let message = `${activeRules.size}/${rules.length} rules are currently active:\n\n`;
@@ -131,7 +298,7 @@ function getRulesMessage(): string {
     const emoji = activeRules.has(rule.id) ? ":tw_white_check_mark:" : ":tw_x:";
     message += `${emoji} ${rule.name}: ${rule.description}\n`;
   });
-  const difficulty = Array.from(activeRules).map(id => rules.find(rule => rule.id === id)!.difficulty).reduce((acc, val) => (acc ?? 0) + val, 0);
+  const difficulty = calculateDifficulty(activeRules);
   message += `\nExpected difficulty: ${difficulty} ${":tw_star:".repeat(difficulty)}`;
   return message;
 }
@@ -177,7 +344,12 @@ app.message(async ({ message, say }) => {
     channel: message.channel,
     timestamp: message.ts
   });
+
+  violationHistoryForThisRuleset.push({ violations });
+  evaluateChange();
 });
+
+setInterval(evaluateChange, 1000 * 60 * 5); // Check for changes every 5 minutes
 
 (async () => {
     await app.start();
