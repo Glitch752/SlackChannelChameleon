@@ -128,15 +128,15 @@ function getFailRatio(): number {
 }
 
 const minimumTimeBetweenChanges = 1000 * 60 * 5; // 5 minutes
-const maximumTimeBetweenChanges = 1000 * 60 * 60 * 24; // 24 hours
+const maximumTimeBetweenChanges = 1000 * 60 * 60 * 5; // 5 hours
 const minFailRatio = 0.1; // If less than this ratio of messages violate the rules, we increase the difficulty
 const maxFailRatio = 0.5; // If more than this ratio of messages violate the rules, we decrease the difficulty
 const minimumSampleSize = 10; // We need at least this many messages to make a decision
 const maximumMessagesUntilChange = 100; // We will change the ruleset after this many messages, regardless of the fail ratio
 const changeChance = 0.1; // The chance of changing the ruleset after the maximum number of messages has been reached
 const initialRoughDifficulty = 6; // The initial rough difficulty of the ruleset
-const mutationIterations = 5; // The number of times we randomly mutate the current ruleset before evaluating the change
-const mutationAmount = 2; // The number of rules we randomly change in the ruleset when mutating
+const mutationIterations = 15; // The number of times we randomly mutate the current ruleset before evaluating the change
+const mutationAmount = 3; // The number of rules we randomly change in the ruleset when mutating
 
 function isValidRuleset(ruleset: Set<string>): boolean {
   const conflicts = rules.filter(rule => ruleset.has(rule.id)).flatMap(rule => rule.conflictsWith ?? []);
@@ -252,18 +252,13 @@ function evaluateChange() {
   if(timeSinceLastChange > maximumTimeBetweenChanges) {
     const newRuleset = randomValidRuleset((initialRoughDifficulty + calculateDifficulty(activeRules)) / 2);
     updateRules(newRuleset, "The ruleset has been changed entirely, since it has been a long time since it was last changed.");
+    return;
   }
 
   if(violationHistoryForThisRuleset.length < minimumSampleSize) return; // We need more data to make a decision
   if(violationHistoryForThisRuleset.length > maximumMessagesUntilChange) {
     const newRuleset = randomValidRuleset((initialRoughDifficulty + calculateDifficulty(activeRules)) / 2);
     updateRules(newRuleset, "The ruleset has been changed entirely, since there have been a lot of messages since it was last changed.");
-  }
-  if(violationHistoryForThisRuleset.length > minimumSampleSize) { // Change the ruleset entirely
-    if(Math.random() < changeChance) {
-      const newRuleset = randomValidRuleset((initialRoughDifficulty + calculateDifficulty(activeRules)) / 2);
-      updateRules(newRuleset, "The ruleset has been changed entirely by chance.");
-    }
     return;
   }
 
@@ -273,17 +268,29 @@ function evaluateChange() {
     if(!newRuleset.success) {
       const newRuleset = randomValidRuleset((initialRoughDifficulty + calculateDifficulty(activeRules)) / 2);
       updateRules(newRuleset, "The fail ratio is high, but the ruleset couldn't be made easier, so we're changing it entirely.");
+      return;
     }
     
     updateRules(newRuleset.ruleset, "The ruleset has been made easier since the fail ratio is high.");
+    return;
   } else if(failRatio < minFailRatio) {
     const newRuleset = makeHarderRuleset(activeRules);
     if(!newRuleset.success) {
       const newRuleset = randomValidRuleset((initialRoughDifficulty + calculateDifficulty(activeRules)) / 2);
       updateRules(newRuleset, "The fail ratio is low, but the ruleset couldn't be made harder, so we're changing it entirely.");
+      return;
     }
 
     updateRules(newRuleset.ruleset, "The ruleset has been made harder since the fail ratio is low.");
+    return;
+  }
+  
+  if(violationHistoryForThisRuleset.length > minimumSampleSize) { // Change the ruleset entirely
+    if(Math.random() < changeChance) {
+      const newRuleset = randomValidRuleset((initialRoughDifficulty + calculateDifficulty(activeRules)) / 2);
+      updateRules(newRuleset, "The ruleset has been changed entirely by chance.");
+      return;
+    }
   }
 
   // No change needed
