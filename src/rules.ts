@@ -216,7 +216,7 @@ function randomValidRuleset(roughDifficulty: number, attempt = 0): Set<string> {
   return ruleset;
 }
 
-function updateRules(newRuleset: Set<string>, reason: string, app: App): void {
+async function updateRules(newRuleset: Set<string>, reason: string, app: App): Promise<void> {
   newRuleset = new Set(newRuleset); // If newRuleset is activeRules, it would be a reference to the same object, which would cause issues
   activeRules.clear();
   newRuleset.forEach(rule => activeRules.add(rule));
@@ -238,26 +238,90 @@ function updateRules(newRuleset: Set<string>, reason: string, app: App): void {
     text: message
   });
 
-  if(!process.env.CANVAS_ID) {
-    console.error("CANVAS_ID not set in environment variables.");
+  const channelInfo = await app.client.conversations.info({
+    channel: process.env.CHANNEL_ID
+  });
+  if(channelInfo.ok !== true) {
+    console.error("Couldn't get channel info.");
     return;
   }
-  
-  app.client.canvases.edit({
-    changes: [
-      {
-        operation: "replace",
-        section_id: "rules",
-        document_content: {
-          type: "markdown",
-          markdown: `# Current ruleset
 
-${rulesMessage}`
-        }
+  if(channelInfo?.channel?.["properties"] === undefined) {
+    console.error("Channel properties not found.");
+    return;
+  }
+
+  const canvasData: {
+    file_id?: string,
+    is_empty?: boolean,
+    quip_thread_id?: string,
+  } | undefined = channelInfo.channel["properties"]["canvas"];
+
+  const content = {
+    type: "markdown",
+    markdown: `> ${rulesMessage.split("\n").map(line => line.trim()).join("  \n> ")}`
+  } as const;
+  
+  if(canvasData === undefined) {
+    console.log("\x1b[33m", "No channel canvas is present; creating a new one.", "\x1b[0m");
+    await app.client.conversations.canvases.create({
+      channel_id: process.env.CHANNEL_ID,
+      document_content: content
+    });
+
+    console.log("\x1b[33m", "Canvas created.", "\x1b[0m");
+  } else {
+    const canvas = canvasData.file_id;
+    if(canvas === undefined) {
+      console.error("Canvas file ID not found.");
+      return;
+    }
+
+    console.log("\x1b[33m", `Channel canvas with ID ${canvas} is present; updating it.`, "\x1b[0m");
+
+    const sections = await app.client.canvases.sections.lookup({
+      canvas_id: canvas,
+      criteria: {
+        contains_text: "rules are currently active" // TODO: This is a pretty hacky way to find the rules section
       }
-    ],
-    canvas_id: process.env.CANVAS_ID
-  });
+    });
+
+    if(sections.ok !== true) {
+      console.error("Couldn't get canvas sections.");
+      return;
+    }
+
+    const existingSectionID = sections?.sections?.[0]?.id;
+    if(existingSectionID === undefined) {
+      // Couldn't find the section; creating a new one
+      console.log("\x1b[33m", "No section found; creating a new one.", "\x1b[0m");
+      await app.client.canvases.edit({
+        changes: [
+          {
+            operation: "insert_at_end",
+            document_content: content
+          }
+        ],
+        canvas_id: canvas
+      });
+      console.log("\x1b[33m", "Section created.", "\x1b[0m");
+      return;
+    }
+
+    console.log("\x1b[33m", `Section found with ID ${existingSectionID}; updating it.`, "\x1b[0m");
+    await app.client.canvases.edit({
+      changes: [
+        {
+          operation: "replace",
+          section_id: existingSectionID,
+          document_content: content
+        }
+      ],
+      canvas_id: canvas
+    });
+
+    console.log("\x1b[33m", "Canvas updated.", "\x1b[0m");
+  }
 }
 
 // Determines if the ruleset should be changed

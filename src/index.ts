@@ -13,8 +13,6 @@ const app = new App({
   appToken: process.env.SLACK_APP_TOKEN,
 });
 
-initializeRules(app);
-
 app.command('/chameleon-rules', async ({ command, ack, respond }) => {
   console.log('\x1b[33m', `Rules command recieved from ${command.user_name}!`, '\x1b[0m');
 
@@ -54,10 +52,11 @@ app.message(async ({ message, say }) => {
   evaluateChange(app);
 });
 
-setInterval(evaluateChange, 1000 * 60 * 5); // Check for changes every 5 minutes
-
 (async () => {
-    await app.start();
+  await app.start();
 
-    console.log('\x1b[32m', 'App is running!', '\x1b[0m');
+  console.log('\x1b[32m', 'App is running!', '\x1b[0m');
+  
+  initializeRules(app);
+  setInterval(evaluateChange, 1000 * 60 * 5); // Check for changes every 5 minutes
 })();
