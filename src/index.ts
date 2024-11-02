@@ -1,6 +1,8 @@
 import { App, LogLevel } from '@slack/bolt';
 import dotenv from 'dotenv';
 import { addToViolationHistory, evaluateChange, getRulesMessage, getViolations, initializeRules } from './rules';
+import { GameMode, startGame } from './gamemodes';
+
 dotenv.config();
 
 const app = new App({
@@ -58,5 +60,6 @@ app.message(async ({ message, say }) => {
   console.log('\x1b[32m', 'App is running!', '\x1b[0m');
   
   initializeRules(app);
+  startGame(GameMode.Charades);
   setInterval(() => evaluateChange(app), 1000 * 60 * 5); // Check for changes every 5 minutes
 })();

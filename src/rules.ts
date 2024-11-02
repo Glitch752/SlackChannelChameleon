@@ -231,9 +231,11 @@ async function updateRules(newRuleset: Set<string>, reason: string, app: App): P
     return;
   }
 
+  if(process.env.QUIET === "full") return;
+  
   const rulesMessage = getRulesMessage();
   const message = `${reason}\n\n${rulesMessage}`;
-  app.client.chat.postMessage({
+  if(process.env.QUIET === undefined) app.client.chat.postMessage({
     channel: process.env.CHANNEL_ID,
     text: message
   });
