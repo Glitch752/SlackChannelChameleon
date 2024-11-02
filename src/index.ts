@@ -58,5 +58,5 @@ app.message(async ({ message, say }) => {
   console.log('\x1b[32m', 'App is running!', '\x1b[0m');
   
   initializeRules(app);
-  setInterval(evaluateChange, 1000 * 60 * 5); // Check for changes every 5 minutes
+  setInterval(() => evaluateChange(app), 1000 * 60 * 5); // Check for changes every 5 minutes
 })();
